@@ -5,7 +5,6 @@ public enum StockMessageMapperError: Error, Equatable, Sendable {
     case invalidPrice
 }
 
-/// Converts between the transport payload and the domain stock model.
 public struct StockMessageMapper: Sendable {
     public init() {}
 
@@ -24,6 +23,7 @@ public struct StockMessageMapper: Sendable {
         StockPriceMessage(
             symbol: stock.symbol.rawValue,
             price: stock.currentPrice.value,
+            change: stock.priceChange,
             timestamp: stock.currentPrice.updatedAt
         )
     }

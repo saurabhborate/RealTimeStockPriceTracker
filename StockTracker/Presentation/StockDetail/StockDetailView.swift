@@ -25,13 +25,7 @@ public struct StockDetailView: View {
                 ConnectionStatusView(state: viewModel.connectionState)
                 Spacer()
                 Button {
-                    Task {
-                        if viewModel.feedIsActive {
-                            await viewModel.stopFeedAction()
-                        } else {
-                            await viewModel.startFeedAction()
-                        }
-                    }
+                    viewModel.toggleFeed()
                 } label: {
                     Label(
                         viewModel.feedIsActive ? "Stop Feed" : "Start Feed",
@@ -39,7 +33,7 @@ public struct StockDetailView: View {
                     )
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.connectionState == .connecting)
+                .disabled(viewModel.connectionState == .connecting || viewModel.isFeedActionInProgress)
                 .accessibilityLabel(viewModel.feedIsActive ? "Stop stock feed" : "Start stock feed")
             }
 

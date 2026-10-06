@@ -10,7 +10,8 @@ final class StockWebSocketDataSourceTests: XCTestCase {
         let dataSource = StockWebSocketDataSource(client: client)
         let stock = Stock(
             symbol: StockSymbol(rawValue: "MSFT"),
-            currentPrice: StockPrice(value: 420.15, updatedAt: Date(timeIntervalSince1970: 5))
+            currentPrice: StockPrice(value: 420.15, updatedAt: Date(timeIntervalSince1970: 5)),
+            previousPrice: StockPrice(value: 419, updatedAt: Date(timeIntervalSince1970: 4))
         )
 
         try await dataSource.send(stock)
@@ -19,6 +20,7 @@ final class StockWebSocketDataSourceTests: XCTestCase {
         let message = try JSONDecoder().decode(StockPriceMessage.self, from: try XCTUnwrap(sentMessages.first))
         XCTAssertEqual(message.symbol, "MSFT")
         XCTAssertEqual(message.price, stock.currentPrice.value)
+        XCTAssertEqual(message.change, Decimal(string: "1.15"))
         XCTAssertEqual(message.timestamp, stock.currentPrice.updatedAt)
     }
 
@@ -27,6 +29,7 @@ final class StockWebSocketDataSourceTests: XCTestCase {
         try await client.connect()
         let dataSource = StockWebSocketDataSource(client: client)
         let updates = await dataSource.priceUpdates()
+        _ = await dataSource.priceUpdates()
         let timestamp = Date(timeIntervalSince1970: 50)
         let message = StockPriceMessage(symbol: "NVDA", price: 900.50, timestamp: timestamp)
         await client.yield(try JSONEncoder().encode(message))
@@ -37,6 +40,8 @@ final class StockWebSocketDataSourceTests: XCTestCase {
         XCTAssertEqual(stock?.symbol, StockSymbol(rawValue: "NVDA"))
         XCTAssertEqual(stock?.currentPrice.value, 900.50)
         XCTAssertEqual(stock?.currentPrice.updatedAt, timestamp)
+        let counts = await client.counts()
+        XCTAssertEqual(counts.incomingSubscriptions, 1)
     }
 
     func testFinishesWithDataErrorForMalformedPayload() async throws {

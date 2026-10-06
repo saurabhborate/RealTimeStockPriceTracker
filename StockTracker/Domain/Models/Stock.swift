@@ -1,6 +1,5 @@
 import Foundation
 
-/// A stock identity and its latest observed prices.
 public struct Stock: Equatable, Identifiable, Sendable {
     public let symbol: StockSymbol
     public let currentPrice: StockPrice

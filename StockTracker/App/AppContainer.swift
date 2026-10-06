@@ -1,11 +1,14 @@
-/// Constructs and owns the shared data dependencies for the application.
 public struct AppContainer: Sendable {
     public let stockRepository: any StockRepository
 
     public init(environment: AppEnvironment = AppEnvironment()) throws {
         let webSocketClient = try WebSocketClientImpl(endpoint: environment.webSocketEndpoint)
         let dataSource = StockWebSocketDataSource(client: webSocketClient)
-        stockRepository = StockRepositoryImpl(dataSource: dataSource)
+        stockRepository = StockRepositoryImpl(
+            dataSource: dataSource,
+            initialStocks: StockCatalog.initialStocks,
+            priceUpdateGenerator: RandomStockPriceUpdateGenerator()
+        )
     }
 
     public init(stockRepository: any StockRepository) {
@@ -15,7 +18,7 @@ public struct AppContainer: Sendable {
     @MainActor
     public func makeStockListViewModel() -> StockListViewModel {
         StockListViewModel(
-            observeUpdates: ObserveStockUpdatesUseCase(repository: stockRepository),
+            observeStocks: ObserveStocksUseCase(repository: stockRepository),
             observeConnection: ObserveConnectionStateUseCase(repository: stockRepository),
             sortStocks: SortStocksUseCase()
         )
@@ -25,10 +28,14 @@ public struct AppContainer: Sendable {
     public func makeStockDetailViewModel(for stock: Stock) -> StockDetailViewModel {
         StockDetailViewModel(
             stock: stock,
-            observeUpdates: ObserveStockUpdatesUseCase(repository: stockRepository),
+            observeStocks: ObserveStocksUseCase(repository: stockRepository),
             observeConnection: ObserveConnectionStateUseCase(repository: stockRepository),
             startFeed: StartStockFeedUseCase(repository: stockRepository),
             stopFeed: StopStockFeedUseCase(repository: stockRepository)
         )
+    }
+
+    public func stopStockFeed() async {
+        await StopStockFeedUseCase(repository: stockRepository)()
     }
 }

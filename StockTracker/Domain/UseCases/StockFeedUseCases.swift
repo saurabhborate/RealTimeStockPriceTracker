@@ -1,12 +1,12 @@
-public struct ObserveStockUpdatesUseCase: Sendable {
+public struct ObserveStocksUseCase: Sendable {
     private let repository: any StockRepository
 
     public init(repository: any StockRepository) {
         self.repository = repository
     }
 
-    public func callAsFunction() async -> AsyncThrowingStream<Stock, any Error> {
-        await repository.priceUpdates()
+    public func callAsFunction() async -> AsyncStream<[Stock]> {
+        await repository.stocks()
     }
 }
 

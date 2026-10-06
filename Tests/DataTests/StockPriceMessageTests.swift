@@ -8,6 +8,7 @@ final class StockPriceMessageTests: XCTestCase {
         let message = StockPriceMessage(
             symbol: "TSLA",
             price: 250.75,
+            change: 1.25,
             timestamp: Date(timeIntervalSince1970: 1_700_000_000)
         )
 

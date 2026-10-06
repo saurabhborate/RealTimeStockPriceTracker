@@ -62,7 +62,10 @@ public actor WebSocketClientImpl: WebSocketClient {
 
         do {
             try await webSocketTask.send(.data(message))
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
+            if Task.isCancelled { throw CancellationError() }
             throw WebSocketError.sendFailed(underlying: error)
         }
     }
@@ -86,7 +89,42 @@ public actor WebSocketClientImpl: WebSocketClient {
             Task { await self?.messageStreamTerminated(receiveID: receiveID) }
         }
         receiveTask = Task { [weak self] in
-            await self?.receiveMessages(from: webSocketTask, receiveID: receiveID, continuation: continuation)
+            var receiveError: WebSocketError?
+            do {
+                while !Task.isCancelled {
+                    let message = try await webSocketTask.receive()
+                    let data: Data
+
+                    switch message {
+                    case .data(let value):
+                        data = value
+                    case .string(let value):
+                        data = Data(value.utf8)
+                    @unknown default:
+                        throw WebSocketError.unsupportedMessage
+                    }
+
+                    continuation.yield(data)
+                }
+                continuation.finish()
+            } catch {
+                if Task.isCancelled {
+                    continuation.finish()
+                } else {
+                    if webSocketTask.closeCode != .invalid {
+                        receiveError = .connectionClosed
+                    } else if let error = error as? WebSocketError {
+                        receiveError = error
+                    } else {
+                        receiveError = .receiveFailed(underlying: error)
+                    }
+                    continuation.finish(throwing: receiveError)
+                }
+            }
+            await self?.receiveLoopDidFinish(
+                receiveID: receiveID,
+                failed: receiveError != nil
+            )
         }
 
         return stream
@@ -94,62 +132,27 @@ public actor WebSocketClientImpl: WebSocketClient {
 
     public func disconnect() async {
         let task = webSocketTask
+        let receiveTask = self.receiveTask
         webSocketTask = nil
 
         receiveTask?.cancel()
-        receiveTask = nil
+        self.receiveTask = nil
         receiveID = nil
         task?.cancel(with: .goingAway, reason: nil)
 
         messageContinuation?.finish()
         clearMessageStream()
+        await receiveTask?.value
     }
 
-    private func receiveMessages(
-        from task: URLSessionWebSocketTask,
-        receiveID: UUID,
-        continuation: AsyncThrowingStream<Data, any Error>.Continuation
-    ) async {
-        do {
-            while !Task.isCancelled {
-                let message = try await task.receive()
-                let data: Data
-
-                switch message {
-                case .data(let value):
-                    data = value
-                case .string(let value):
-                    data = Data(value.utf8)
-                @unknown default:
-                    throw WebSocketError.unsupportedMessage
-                }
-
-                continuation.yield(data)
-            }
-            continuation.finish()
-        } catch {
-            if Task.isCancelled {
-                continuation.finish()
-            } else {
-                let receiveError: WebSocketError
-                if task.closeCode != .invalid {
-                    receiveError = .connectionClosed
-                } else if let webSocketError = error as? WebSocketError {
-                    receiveError = webSocketError
-                } else {
-                    receiveError = .receiveFailed(underlying: error)
-                }
-                continuation.finish(throwing: receiveError)
-                if self.receiveID == receiveID {
-                    webSocketTask?.cancel(with: .goingAway, reason: nil)
-                    webSocketTask = nil
-                }
-            }
-        }
-
+    private func receiveLoopDidFinish(receiveID: UUID, failed: Bool) {
         guard self.receiveID == receiveID else { return }
         receiveTask = nil
         self.receiveID = nil
+        if failed {
+            webSocketTask?.cancel(with: .goingAway, reason: nil)
+            webSocketTask = nil
+        }
         clearMessageStream()
     }
 

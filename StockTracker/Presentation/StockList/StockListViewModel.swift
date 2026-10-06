@@ -8,10 +8,10 @@ public final class StockListViewModel {
     public private(set) var errorMessage: String?
     public var sortingOption: StockSortingOption = .priceAscending
 
-    @ObservationIgnored private let observeUpdates: ObserveStockUpdatesUseCase
+    @ObservationIgnored private let observeStocks: ObserveStocksUseCase
     @ObservationIgnored private let observeConnection: ObserveConnectionStateUseCase
     @ObservationIgnored private let sortStocks: SortStocksUseCase
-    @ObservationIgnored private var updatesTask: Task<Void, Never>?
+    @ObservationIgnored private var stocksTask: Task<Void, Never>?
     @ObservationIgnored private var connectionTask: Task<Void, Never>?
 
     public var sortedStocks: [Stock] {
@@ -19,28 +19,46 @@ public final class StockListViewModel {
     }
 
     public init(
-        observeUpdates: ObserveStockUpdatesUseCase,
+        observeStocks: ObserveStocksUseCase,
         observeConnection: ObserveConnectionStateUseCase,
         sortStocks: SortStocksUseCase
     ) {
-        self.observeUpdates = observeUpdates
+        self.observeStocks = observeStocks
         self.observeConnection = observeConnection
         self.sortStocks = sortStocks
     }
 
+    deinit {
+        stocksTask?.cancel()
+        connectionTask?.cancel()
+    }
+
     public func startObserving() {
-        guard connectionTask == nil else { return }
+        guard stocksTask == nil, connectionTask == nil else { return }
+
+        let observeStocks = self.observeStocks
+        stocksTask = Task { [weak self] in
+            let snapshots = await observeStocks()
+            for await stocks in snapshots {
+                guard !Task.isCancelled else { return }
+                self?.stocks = stocks
+            }
+            self?.stocksTask = nil
+        }
+
         let observeConnection = self.observeConnection
         connectionTask = Task { [weak self] in
-            let stream = await observeConnection()
-            for await state in stream {
+            let states = await observeConnection()
+            for await state in states {
                 guard !Task.isCancelled else { return }
                 self?.connectionState = state
-                if state == .connected {
-                    self?.startPriceUpdates()
-                } else {
-                    self?.updatesTask?.cancel()
-                    self?.updatesTask = nil
+                switch state {
+                case .failed:
+                    self?.errorMessage = "The stock feed stopped unexpectedly. Try starting it again."
+                case .connected:
+                    self?.errorMessage = nil
+                case .disconnected, .connecting:
+                    break
                 }
             }
             self?.connectionTask = nil
@@ -48,40 +66,13 @@ public final class StockListViewModel {
     }
 
     public func stopObserving() {
-        updatesTask?.cancel()
+        stocksTask?.cancel()
         connectionTask?.cancel()
-        updatesTask = nil
+        stocksTask = nil
         connectionTask = nil
     }
 
     public func selectSortingOption(_ option: StockSortingOption) {
         sortingOption = option
-    }
-
-    func receive(_ stock: Stock) {
-        if let index = stocks.firstIndex(where: { $0.symbol == stock.symbol }) {
-            stocks[index] = stock
-        } else {
-            stocks.append(stock)
-        }
-    }
-
-    private func startPriceUpdates() {
-        guard updatesTask == nil else { return }
-        let observeUpdates = self.observeUpdates
-        updatesTask = Task { [weak self] in
-            let stream = await observeUpdates()
-            do {
-                for try await stock in stream {
-                    guard !Task.isCancelled else { return }
-                    self?.receive(stock)
-                }
-            } catch is CancellationError {
-                return
-            } catch {
-                self?.errorMessage = "Stock updates could not be loaded."
-            }
-            self?.updatesTask = nil
-        }
     }
 }

@@ -1,4 +1,3 @@
-/// A symbol identifying a stock in the domain layer.
 public struct StockSymbol: Hashable, Sendable {
     public let rawValue: String
 

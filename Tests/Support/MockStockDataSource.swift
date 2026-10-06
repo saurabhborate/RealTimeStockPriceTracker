@@ -8,47 +8,57 @@ actor MockStockDataSource: StockDataSource {
         case updates
     }
 
-    private let stream: AsyncThrowingStream<Stock, any Error>
-    private let continuation: AsyncThrowingStream<Stock, any Error>.Continuation
     private let connectionFailure: Failure?
     private let sendFailure: Failure?
-    private var sentStocks: [Stock] = []
-    private var disconnected = false
+    private var incomingStream: AsyncThrowingStream<Stock, any Error>?
+    private var incomingContinuation: AsyncThrowingStream<Stock, any Error>.Continuation?
+    private var sentStockHistory: [Stock] = []
+    private(set) var connectCount = 0
+    private(set) var disconnectCount = 0
 
-    init(connectionFailure: Failure? = nil, sendFailure: Failure? = nil) {
-        let (stream, continuation) = AsyncThrowingStream<Stock, any Error>.makeStream()
-        self.stream = stream
-        self.continuation = continuation
+    init(
+        connectionFailure: Failure? = nil,
+        sendFailure: Failure? = nil
+    ) {
         self.connectionFailure = connectionFailure
         self.sendFailure = sendFailure
     }
 
     func connect() async throws {
         if let connectionFailure { throw connectionFailure }
+        connectCount += 1
+        let (stream, continuation) = AsyncThrowingStream<Stock, any Error>.makeStream()
+        incomingStream = stream
+        incomingContinuation = continuation
     }
 
     func send(_ stock: Stock) async throws {
         if let sendFailure { throw sendFailure }
-        sentStocks.append(stock)
+        sentStockHistory.append(stock)
     }
 
     func priceUpdates() async -> AsyncThrowingStream<Stock, any Error> {
-        stream
+        incomingStream ?? AsyncThrowingStream { $0.finish(throwing: Failure.connection) }
     }
 
     func disconnect() async {
-        disconnected = true
-        continuation.finish()
+        disconnectCount += 1
+        incomingContinuation?.finish()
+        incomingContinuation = nil
+        incomingStream = nil
     }
 
     func yield(_ stock: Stock) {
-        continuation.yield(stock)
+        incomingContinuation?.yield(stock)
     }
 
     func finishUpdates(throwing error: Failure) {
-        continuation.finish(throwing: error)
+        incomingContinuation?.finish(throwing: error)
+        incomingContinuation = nil
     }
 
-    func wasDisconnected() -> Bool { disconnected }
-    func sent() -> [Stock] { sentStocks }
+    func sentStocks() -> [Stock] { sentStockHistory }
+    func wasDisconnected() -> Bool { disconnectCount > 0 }
+    func counts() -> (connections: Int, disconnections: Int) { (connectCount, disconnectCount) }
+
 }

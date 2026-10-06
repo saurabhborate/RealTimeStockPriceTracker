@@ -24,4 +24,20 @@ final class StockModelTests: XCTestCase {
 
         XCTAssertEqual(price.value, value)
     }
+
+    func testStockPriceChangeRepresentsPositiveNegativeAndZeroMoves() {
+        let previous = StockPrice(value: 225, updatedAt: Date(timeIntervalSince1970: 1))
+        XCTAssertEqual(stock(current: 226.2, previous: previous).priceChange, Decimal(string: "1.2"))
+        XCTAssertEqual(stock(current: 223.8, previous: previous).priceChange, Decimal(string: "-1.2"))
+        XCTAssertEqual(stock(current: 225, previous: previous).priceChange, .zero)
+        XCTAssertEqual(stock(current: 225, previous: nil).priceChange, .zero)
+    }
+
+    private func stock(current: Decimal, previous: StockPrice?) -> Stock {
+        Stock(
+            symbol: StockSymbol(rawValue: "AAPL"),
+            currentPrice: StockPrice(value: current, updatedAt: Date(timeIntervalSince1970: 2)),
+            previousPrice: previous
+        )
+    }
 }
