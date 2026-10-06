@@ -13,9 +13,9 @@ let package = Package(
             path: "StockTracker"
         ),
         .testTarget(
-            name: "StockTrackerDomainTests",
+            name: "StockTrackerTests",
             dependencies: ["StockTracker"],
-            path: "Tests/DomainTests"
+            path: "Tests"
         )
     ]
 )
